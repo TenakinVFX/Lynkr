@@ -1,0 +1,1871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lynkr Web - Bookmark Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #212121;
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app { display: flex; flex-direction: column; height: 100vh; }
+
+        /* ── Header ── */
+        .header {
+            background: #1a1a1a;
+            border-bottom: 1px solid #3a3a3d;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo { font-size: 22px; }
+        .app-title { font-weight: 700; font-size: 17px; color: #fff; }
+
+        .header-right { display: flex; align-items: center; gap: 8px; }
+
+        .account-btn {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3d;
+            border-radius: 6px;
+            color: #e0e0e0;
+            cursor: pointer;
+            padding: 7px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.15s;
+        }
+        .account-btn:hover { background: #353535; }
+        .account-btn .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #3d8b3d;
+            flex-shrink: 0;
+        }
+        .account-btn .dot.offline { background: #666; }
+
+        .sync-btn {
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            padding: 7px;
+            border-radius: 4px;
+            font-size: 16px;
+            line-height: 1;
+            transition: color 0.15s, background 0.15s;
+        }
+        .sync-btn:hover { background: #2a2a2a; color: #e0e0e0; }
+        .sync-btn.syncing { animation: spin 1s linear infinite; color: #5a8daa; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Main layout ── */
+        .main-content { display: flex; flex: 1; overflow: hidden; }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: 220px;
+            background: #1a1a1a;
+            border-right: 1px solid #3a3a3d;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .tabs-list { flex: 1; overflow-y: auto; padding: 10px 10px 0; }
+        .tab-button {
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            margin-bottom: 4px;
+            border: none;
+            border-radius: 5px;
+            background: transparent;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.15s;
+        }
+        .tab-button:hover { background: #2a2a2a; color: #e0e0e0; }
+        .tab-button.active { color: white; font-weight: 600; }
+
+        .sidebar-footer { padding: 10px; border-top: 1px solid #2a2a2a; margin-top: 4px; }
+        .sidebar-footer-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 9px 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.15s;
+        }
+        .btn-secondary { background: #2a2a2a; color: #e0e0e0; }
+        .btn-secondary:hover { background: #353535; }
+        .btn-primary { background: #2a4d6a; color: white; }
+        .btn-primary:hover { background: #3a6d8a; }
+        .btn-danger { background: #5a1a1a; color: #ff8080; }
+        .btn-danger:hover { background: #6e2020; }
+
+        /* ── Content ── */
+        .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .add-bookmark-bar {
+            background: #1a1a1a;
+            border-bottom: 1px solid #3a3a3d;
+            padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        .add-bookmark-form { display: flex; gap: 10px; }
+        .url-input {
+            flex: 1;
+            padding: 9px 12px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3d;
+            border-radius: 5px;
+            color: white;
+            font-size: 13px;
+        }
+        .url-input:focus { outline: none; border-color: #5a8daa; }
+
+        .bookmarks-area { flex: 1; overflow-y: auto; padding: 20px; }
+
+        /* ── Groups ── */
+        .group-card { margin-bottom: 14px; border-radius: 5px; overflow: hidden; }
+        .group-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 11px 15px; cursor: pointer; user-select: none;
+            border-bottom: 1px solid rgba(0,0,0,0.2);
+        }
+        .group-header-left { display: flex; align-items: center; gap: 8px; }
+        .group-title { font-weight: 600; font-size: 15px; color: white; }
+        .group-count { color: #ccc; font-size: 13px; }
+        .chevron { transition: transform 0.2s; font-size: 11px; }
+        .chevron.collapsed { transform: rotate(-90deg); }
+        .group-content { padding: 16px; }
+
+        /* ── Bookmark cards ── */
+        .bookmark-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 14px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: filter 0.15s;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .bookmark-card:hover { filter: brightness(1.18); }
+        .bookmark-icon { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+        .bookmark-info { flex: 1; min-width: 0; }
+        .bookmark-title { font-weight: 600; color: #e0e0e0; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+        .bookmark-url { font-size: 11px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .more-btn { background: transparent; border: none; color: #888; cursor: pointer; padding: 4px 6px; border-radius: 3px; font-size: 18px; line-height: 1; }
+        .more-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        /* ── Context menu ── */
+        .context-menu {
+            position: fixed;
+            background: #252525;
+            border: 1px solid #3a3a3d;
+            border-radius: 6px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+            z-index: 9000;
+            min-width: 190px;
+            padding: 4px 0;
+        }
+        .ctx-item {
+            width: 100%; padding: 9px 14px;
+            background: transparent; border: none;
+            color: #e0e0e0; text-align: left;
+            cursor: pointer; font-size: 13px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .ctx-item:hover { background: #333; }
+        .ctx-item.danger { color: #ff7070; }
+        .ctx-item.danger:hover { background: rgba(232,17,35,0.15); }
+        .ctx-sep { border: none; border-top: 1px solid #3a3a3d; margin: 3px 0; }
+
+        /* ── Modal overlay ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10000;
+        }
+        .modal {
+            background: #1e1e1e;
+            border: 1px solid #3a3a3d;
+            border-radius: 10px;
+            width: 420px;
+            max-width: 95vw;
+            overflow: hidden;
+        }
+        .modal-header {
+            background: #161616;
+            padding: 16px 20px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header h3 { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+        .modal-close {
+            background: transparent; border: none; color: #888;
+            cursor: pointer; font-size: 16px; padding: 4px 7px;
+            border-radius: 4px; line-height: 1;
+        }
+        .modal-close:hover { background: rgba(232,17,35,0.5); color: white; }
+        .modal-body { padding: 22px 24px; }
+
+        /* ── Auth modal ── */
+        .auth-tabs {
+            display: grid; grid-template-columns: 1fr 1fr;
+            background: #2a2a2a;
+            border-radius: 6px;
+            padding: 4px;
+            margin-bottom: 22px;
+        }
+        .auth-tab {
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s;
+        }
+        .auth-tab.active { background: #2a4d6a; color: white; font-weight: 600; }
+
+        .field-label { font-size: 12px; color: #aaa; margin-bottom: 6px; display: block; }
+        .field-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3d;
+            border-radius: 5px;
+            color: white;
+            font-size: 13px;
+            margin-bottom: 14px;
+            caret-color: #5a8daa;
+        }
+        .field-input:focus { outline: none; border-color: #5a8daa; }
+
+        .auth-action-btn {
+            width: 100%;
+            padding: 11px;
+            background: #2a4d6a;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 4px;
+            transition: background 0.15s;
+        }
+        .auth-action-btn:hover { background: #3a6d8a; }
+        .auth-action-btn:disabled { background: #1a2d3a; color: #555; cursor: not-allowed; }
+
+        .forgot-link {
+            display: block; text-align: right;
+            font-size: 11px; color: #5a8daa;
+            cursor: pointer; margin-top: -8px; margin-bottom: 16px;
+        }
+        .forgot-link:hover { color: #7aadc0; }
+
+        .alert-banner {
+            padding: 10px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            margin-bottom: 14px;
+            display: none;
+        }
+        .alert-error { background: #3d1a1a; border: 1px solid #8b2020; color: #ff8080; display: block; }
+        .alert-success { background: #1a3d1a; border: 1px solid #208b20; color: #80ff80; display: block; }
+
+        .auth-subtitle { font-size: 12px; color: #777; text-align: center; margin-bottom: 20px; line-height: 1.5; }
+
+        /* ── Signed-in dropdown ── */
+        .dropdown-menu {
+            position: fixed;
+            background: #252525;
+            border: 1px solid #3a3a3d;
+            border-radius: 6px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+            z-index: 9000;
+            min-width: 220px;
+            padding: 4px 0;
+        }
+        .dropdown-email {
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #888;
+            border-bottom: 1px solid #3a3a3d;
+            margin-bottom: 4px;
+        }
+
+        /* ── Status bar ── */
+        .status-bar {
+            background: #1a1a1a;
+            border-top: 1px solid #2a2a2a;
+            padding: 4px 16px;
+            font-size: 11px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .sync-status { color: #5a8daa; }
+
+        /* ── Group/Bookmark dialog ── */
+        .select-input {
+            width: 100%;
+            padding: 9px 12px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3d;
+            border-radius: 5px;
+            color: white;
+            font-size: 13px;
+            margin-bottom: 14px;
+            cursor: pointer;
+        }
+        .select-input:focus { outline: none; border-color: #5a8daa; }
+        .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+        .hidden { display: none !important; }
+
+        input[type="file"] { display: none; }
+
+        /* ── Empty state ── */
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%;
+            color: #555; text-align: center; padding: 40px;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state p { font-size: 14px; line-height: 1.6; }
+        #addGroupBtn { display: none; }   /* ADD THIS LINE */
+        /* ── Mobile ── */
+.hamburger {
+    display: none;
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+}
+.hamburger:hover { background: #2a2a2a; }
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 500;
+}
+
+@media (max-width: 768px) {
+    .hamburger { display: block; }
+    #addGroupBtn { display: block; }
+    .add-bookmark-form {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px;
+    }
+    .add-bookmark-form .url-input { grid-column: 1 / -1; }
+    .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        z-index: 600;
+        transition: left 0.25s ease;
+    }
+    .sidebar.open { left: 0; }
+    .sidebar-overlay.open { display: block; }
+    .header {
+        padding: 12px 16px;
+        min-height: 56px;
+    }
+    .add-bookmark-bar { padding: 12px; }
+    .add-bookmark-form .btn {
+        padding: 12px;
+        font-size: 15px;
+    }
+    .url-input {
+        padding: 12px;
+        font-size: 15px;
+    }
+    .bookmarks-area {
+        padding: 12px;
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+    .bookmark-card {
+        padding: 12px;
+        height: auto;
+        min-height: 70px;
+    }
+    .bookmark-icon { width: 36px; height: 36px; }
+    .bookmark-title { font-size: 13px; }
+    .bookmark-url { font-size: 11px; }
+    .group-header { padding: 14px 12px; }
+    .group-title { font-size: 14px; }
+    .status-bar { display: none; }
+    .header-right { gap: 6px; }
+    .account-btn { padding: 7px 10px; font-size: 12px; }
+    .sync-btn { padding: 7px; }
+    .modal { width: 95vw; }
+    .modal-body { padding: 16px; }
+    .more-btn { padding: 8px 10px; font-size: 20px; }
+}
+    </style>
+</head>
+<body>
+<div class="app">
+ <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>  <!-- ADD THIS -->
+    <!-- ── Header ── -->
+    <div class="header">
+    <div class="header-left">
+        <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        <div class="logo">🔗</div>
+        <div class="app-title">Lynkr</div>
+    </div>
+    <div class="header-right">
+        <button class="sync-btn" id="syncBtn" title="Sync with cloud" onclick="manualSync()">⟳</button>
+        <button class="account-btn" id="accountBtn" onclick="handleAccountClick()">
+            <span class="dot offline" id="statusDot"></span>
+            <span id="accountLabel">☁ Sign In</span>
+        </button>
+    </div>
+</div>
+    <!-- ── Main ── -->
+    <div class="main-content">
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="tabs-list" id="tabsList"></div>
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-btns">
+    <button class="btn btn-secondary" onclick="showImportDialog()">📥 Import</button>
+    <button class="btn btn-secondary" onclick="exportCurrentTab()">📤 Export</button>
+</div>
+                <button class="btn btn-primary" style="width:100%" onclick="showAddTabDialog()">+ New Tab</button>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content-area">
+            <div class="add-bookmark-bar">
+    <div class="add-bookmark-form">
+        <input type="text" id="urlInput" class="url-input" placeholder="Paste or type a URL..."
+            onkeydown="if(event.key==='Enter') addBookmark()">
+        <button class="btn btn-primary" onclick="addBookmark()">Add Bookmark</button>
+        <button class="btn btn-secondary" onclick="showAddGroupDialog()" id="addGroupBtn">📁 Group</button>
+    </div>
+</div>
+            <div class="bookmarks-area" id="bookmarksArea" oncontextmenu="showBgContextMenu(event)"></div>
+            <div class="status-bar">
+                <span>Lynkr Web</span>
+                <span class="sync-status" id="syncStatusText"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- hidden file input -->
+<input type="file" id="fileInput" accept=".lynk,.json,*/*" onchange="handleFileImport(event)">
+
+<script>
+// ═══════════════════════════════════════════════════════
+// SUPABASE CONFIG
+// ═══════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://nnybvwigofjmmvjxcyro.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ueWJ2d2lnb2ZqbW12anhjeXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDM3MTIsImV4cCI6MjA4OTkxOTcxMn0.ModLFpK_5FSI-chd51Hmh4Lk65YJ2yHYN5Gv2MUWpJ8';
+
+// Renamed from 'supabase' to 'sb' to avoid conflict with the global exposed by the CDN script
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ═══════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════
+let appState = { tabs: [], currentTab: null, backgroundColor: '#212121' };
+let currentUser = null;
+let isSyncing = false;
+
+    function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+}
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+async function init() {
+    loadFromLocalStorage();
+    renderTabs();
+    renderBookmarks();
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+        currentUser = session.user;
+        updateAccountUI();
+        await pullFromCloud();
+    }
+
+    // Only create default tab if still nothing after cloud pull
+    if (appState.tabs.length === 0) createTab('Default');
+    renderTabs();
+    renderBookmarks();
+
+    sb.auth.onAuthStateChange((_event, session) => {
+        currentUser = session?.user ?? null;
+        updateAccountUI();
+    });
+
+    setInterval(async () => {
+    if (currentUser) await pullFromCloud();
+    await refreshLiveTabs();
+}, 5 * 60 * 1000);
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTH UI
+// ═══════════════════════════════════════════════════════
+function updateAccountUI() {
+    const dot = document.getElementById('statusDot');
+    const label = document.getElementById('accountLabel');
+    if (currentUser) {
+        dot.classList.remove('offline');
+        label.textContent = '☁ ' + (currentUser.email?.split('@')[0] || 'Account');
+    } else {
+        dot.classList.add('offline');
+        label.textContent = '☁ Sign In';
+    }
+}
+
+function handleAccountClick() {
+    if (currentUser) {
+        showAccountDropdown();
+    } else {
+        showAuthModal();
+    }
+}
+
+function showAccountDropdown() {
+    closeAllOverlays();
+    const btn = document.getElementById('accountBtn');
+    const rect = btn.getBoundingClientRect();
+
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu';
+    menu.id = 'accountDropdown';
+    menu.style.top = (rect.bottom + 6) + 'px';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+
+    menu.innerHTML = `
+        <div class="dropdown-email">✉ ${currentUser.email}</div>
+        <button class="ctx-item" onclick="manualSync(); closeAllOverlays()">⟳ &nbsp;Sync now</button>
+        <hr class="ctx-sep">
+        <button class="ctx-item danger" onclick="signOut()">🚪 &nbsp;Sign out</button>
+    `;
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', closeAllOverlays, { once: true }), 0);
+}
+
+function showAuthModal() {
+    closeAllOverlays();
+    let mode = 'signin';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'authModal';
+
+    function render() {
+        const isSignIn = mode === 'signin';
+        const isSignUp = mode === 'signup';
+        overlay.innerHTML = `
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Lynkr Account</h3>
+                <button class="modal-close" onclick="closeAllOverlays()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="auth-tabs">
+                    <button class="auth-tab ${isSignIn ? 'active' : ''}" onclick="authSetMode('signin')">Sign In</button>
+                    <button class="auth-tab ${isSignUp ? 'active' : ''}" onclick="authSetMode('signup')">Create Account</button>
+                </div>
+                <p class="auth-subtitle">
+                    ${isSignIn
+                        ? 'Sign in to sync your bookmarks across devices'
+                        : 'Create a free account to back up and sync your bookmarks'}
+                </p>
+                <div id="authAlert" class="alert-banner"></div>
+                <label class="field-label">Email</label>
+                <input class="field-input" type="email" id="authEmail" placeholder="you@example.com" onkeydown="if(event.key==='Enter') authSubmit()">
+                ${mode !== 'reset' ? `
+                <label class="field-label">Password</label>
+                <input class="field-input" type="password" id="authPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter') authSubmit()">
+                ${isSignIn ? `<span class="forgot-link" onclick="authSetMode('reset')">Forgot password?</span>` : ''}
+                ` : `
+                <p style="font-size:13px;color:#aaa;margin-bottom:16px">Enter your email to receive a password reset link.</p>
+                `}
+                <button class="auth-action-btn" id="authSubmitBtn" onclick="authSubmit()">
+                    ${isSignIn ? 'Sign In' : isSignUp ? 'Create Account' : 'Send Reset Email'}
+                </button>
+            </div>
+        </div>`;
+        setTimeout(() => document.getElementById('authEmail')?.focus(), 50);
+    }
+
+    window.authSetMode = (m) => { mode = m; render(); };
+
+    window.authSubmit = async () => {
+        const email = document.getElementById('authEmail')?.value.trim();
+        const password = document.getElementById('authPassword')?.value;
+        const btn = document.getElementById('authSubmitBtn');
+        const alertEl = document.getElementById('authAlert');
+
+        if (!email) return showAuthAlert('Please enter your email.', 'error');
+
+        btn.disabled = true;
+        btn.textContent = 'Please wait…';
+        alertEl.className = 'alert-banner';
+
+        try {
+            if (mode === 'signin') {
+                if (!password) { showAuthAlert('Please enter your password.', 'error'); btn.disabled = false; btn.textContent = 'Sign In'; return; }
+                const { error } = await sb.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+                const { data: { session } } = await sb.auth.getSession();
+                currentUser = session?.user ?? null;
+                updateAccountUI();
+                closeAllOverlays();
+                setSyncStatus('Signed in — syncing…');
+                await pullFromCloud();
+
+            } else if (mode === 'signup') {
+                if (!password) { showAuthAlert('Please enter a password.', 'error'); btn.disabled = false; btn.textContent = 'Create Account'; return; }
+                if (password.length < 6) { showAuthAlert('Password must be at least 6 characters.', 'error'); btn.disabled = false; btn.textContent = 'Create Account'; return; }
+                const { data, error } = await sb.auth.signUp({ email, password });
+                if (error) throw error;
+                if (data?.session) {
+                    currentUser = data.session.user;
+                    updateAccountUI();
+                    closeAllOverlays();
+                    await pushToCloud();
+                } else {
+                    showAuthAlert('Account created! Check your email to confirm, then sign in.', 'success');
+                    authSetMode('signin');
+                }
+
+            } else if (mode === 'reset') {
+                const { error } = await sb.auth.resetPasswordForEmail(email);
+                if (error) throw error;
+                showAuthAlert('Password reset email sent! Check your inbox.', 'success');
+            }
+        } catch (err) {
+            showAuthAlert(cleanAuthError(err.message), 'error');
+        }
+
+        btn.disabled = false;
+        btn.textContent = mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Email';
+    };
+
+    function showAuthAlert(msg, type) {
+        const el = document.getElementById('authAlert');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'alert-banner alert-' + type;
+    }
+
+    render();
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeAllOverlays(); });
+}
+
+function cleanAuthError(msg) {
+    if (msg.includes('Invalid login credentials')) return 'Invalid email or password.';
+    if (msg.includes('User already registered')) return 'An account with this email already exists.';
+    if (msg.includes('Password should be at least')) return 'Password must be at least 6 characters.';
+    if (msg.includes('Unable to validate email')) return 'Please enter a valid email address.';
+    return msg;
+}
+
+async function signOut() {
+    closeAllOverlays();
+    await sb.auth.signOut();
+    currentUser = null;
+    updateAccountUI();
+    setSyncStatus('Signed out');
+}
+
+// ═══════════════════════════════════════════════════════
+// CLOUD SYNC
+// ═══════════════════════════════════════════════════════
+async function pushToCloud() {
+    if (!currentUser) return;
+    isSyncing = true;
+    setSyncStatus('Syncing…');
+    const syncBtn = document.getElementById('syncBtn');
+    syncBtn.classList.add('syncing');
+
+    try {
+        const saveDataJson = buildSaveDataJson();
+        const { error } = await sb
+            .from('lynkr_bookmarks')
+            .upsert({ id: currentUser.id, user_id: currentUser.id, data: JSON.parse(saveDataJson) });
+        if (error) throw error;
+
+        // Update any live share rows with fresh tab data
+        const { data: liveShares } = await sb
+            .from('lynkr_shared_tabs')
+            .select('share_code, tab_name')
+            .eq('owner_user_id', currentUser.id)
+            .eq('is_live', true);
+
+        if (liveShares?.length) {
+            const parsed = JSON.parse(saveDataJson);
+            for (const share of liveShares) {
+                const tabData = (parsed.Tabs || []).find(t => t.Name === share.tab_name);
+                if (tabData) {
+                    await sb
+                        .from('lynkr_shared_tabs')
+                        .update({ tab_data: JSON.stringify(tabData) })
+                        .eq('share_code', share.share_code);
+                }
+            }
+        }
+
+        setSyncStatus('Synced ' + fmtTime());
+    } catch (e) {
+        setSyncStatus('Sync failed');
+        console.error('[Lynkr] push failed:', e.message);
+    } finally {
+        isSyncing = false;
+        syncBtn.classList.remove('syncing');
+    }
+}
+
+
+async function pullFromCloud() {
+    if (!currentUser) return;
+    isSyncing = true;
+    setSyncStatus('Checking cloud…');
+    const syncBtn = document.getElementById('syncBtn');
+    syncBtn.classList.add('syncing');
+
+    try {
+        const { data, error } = await sb
+            .from('lynkr_bookmarks')
+            .select('data, updated_at')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (data?.data) {
+            const cloudUpdated = new Date(data.updated_at);
+            const localSavedStr = localStorage.getItem('lynkr-last-save-time');
+            const localUpdated = localSavedStr ? new Date(localSavedStr) : new Date(0);
+
+            if (cloudUpdated > localUpdated) {
+                const parsed = parseDesktopSaveData(
+                    typeof data.data === 'string' ? data.data : JSON.stringify(data.data)
+                );
+                if (parsed) {
+                    appState = parsed;
+                    if (!appState.currentTab && appState.tabs.length > 0) {
+                        appState.currentTab = appState.tabs[0];
+                    }
+                    saveToLocalStorage();
+                    renderTabs();
+                    renderBookmarks();
+                    setSyncStatus('Loaded from cloud ' + fmtTime());
+                } else {
+                    setSyncStatus('Cloud data unreadable');
+                }
+            } else if (localUpdated > cloudUpdated) {
+                await pushToCloud();
+            } else {
+                setSyncStatus('Up to date ' + fmtTime());
+            }
+        } else {
+            await pushToCloud();
+        }
+    } catch (e) {
+        setSyncStatus('Sync failed');
+        console.error('[Lynkr] pull failed:', e.message);
+    } finally {
+        isSyncing = false;
+        syncBtn.classList.remove('syncing');
+    }
+}
+
+async function manualSync() {
+    if (!currentUser) { showAuthModal(); return; }
+    await pullFromCloud();
+}
+
+// ═══════════════════════════════════════════════════════
+// SAVE DATA HELPERS
+// ═══════════════════════════════════════════════════════
+function buildSaveDataJson() {
+    const standaloneTabs = appState.tabs.filter(t => !t.parentContainer);
+    const data = {
+        BackgroundColor: appState.backgroundColor || '#212121',
+        CurrentTab: appState.currentTab?.name || '',
+        TabContainers: [],
+        Tabs: standaloneTabs.map(tabToTabData)
+    };
+    return JSON.stringify(data, null, 2);
+}
+
+function tabToTabData(tab) {
+    return {
+        Name: tab.name,
+        TabColor: tab.tabColor || '#2A4D6A',
+        Groups: sortedGroups(tab.groups).map(groupToGroupData)
+    };
+}
+
+function groupToGroupData(group) {
+    return {
+        Name: group.name,
+        PositionX: group.positionX || 20,
+        PositionY: group.positionY || 20,
+        IsCollapsed: group.isCollapsed || false,
+        Order: group.order || 0,
+        HeaderColor: group.headerColor || '#2A2A2A',
+        BackgroundColor: group.backgroundColor || '#1A1A1A',
+        Level: group.level || 0,
+        Bookmarks: (group.bookmarks || []).map(b => ({
+            Title: b.title,
+            Url: b.url,
+            ThumbnailUrl: b.thumbnailUrl,
+            DateAdded: b.dateAdded,
+            BackgroundColor: b.backgroundColor || '#252525'
+        })),
+        ChildGroups: []
+    };
+}
+
+function sortedGroups(groupsObj) {
+    return Object.entries(groupsObj || {})
+        .map(([name, g]) => ({ name, ...g }))
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+function parseDesktopSaveData(jsonStr) {
+    try {
+        // Desktop C# app double-encodes: keep unwrapping until we get an object
+        let raw = JSON.parse(jsonStr);
+        while (typeof raw === "string") { raw = JSON.parse(raw); }
+        const tabs = [];
+
+        const rawTabs = raw.Tabs || raw.tabs || [];
+        rawTabs.forEach(td => { tabs.push(parseTabData(td)); });
+
+        const rawContainers = raw.TabContainers || raw.tabContainers || [];
+        rawContainers.forEach(c => {
+            (c.Tabs || c.tabs || []).forEach(td => { tabs.push(parseTabData(td)); });
+        });
+
+        const bgColor = raw.BackgroundColor || raw.backgroundColor || '#212121';
+        const currentTabName = raw.CurrentTab || raw.currentTab || '';
+        const currentTab = tabs.find(t => t.name === currentTabName) || tabs[0] || null;
+
+        return { tabs, currentTab, backgroundColor: bgColor };
+    } catch (e) {
+        console.error('[Lynkr] parseDesktopSaveData failed:', e);
+        return null;
+    }
+}
+
+function parseTabData(td) {
+    const name = td.Name || td.name || 'Tab';
+    const tabColor = td.TabColor || td.tabColor || '#2A4D6A';
+    const rawGroups = td.Groups || td.groups || [];
+    const groups = {};
+    rawGroups.forEach((gd, idx) => {
+        const gName = gd.Name || gd.name || `Group ${idx+1}`;
+        groups[gName] = {
+            headerColor: gd.HeaderColor || gd.headerColor || '#2A2A2A',
+            backgroundColor: gd.BackgroundColor || gd.backgroundColor || '#1A1A1A',
+            isCollapsed: gd.IsCollapsed ?? gd.isCollapsed ?? false,
+            order: gd.Order ?? gd.order ?? idx,
+            positionX: gd.PositionX ?? gd.positionX ?? 20,
+            positionY: gd.PositionY ?? gd.positionY ?? 20,
+            level: gd.Level ?? gd.level ?? 0,
+            bookmarks: (gd.Bookmarks || gd.bookmarks || []).map(b => ({
+                title: b.Title || b.title || 'Untitled',
+                url: b.Url || b.url || '',
+                thumbnailUrl: b.ThumbnailUrl || b.thumbnailUrl || '',
+                dateAdded: b.DateAdded || b.dateAdded || new Date().toISOString(),
+                backgroundColor: b.BackgroundColor || b.backgroundColor || '#252525'
+            }))
+        };
+    });
+    return { name, tabColor, groups };
+}
+
+// ═══════════════════════════════════════════════════════
+// LOCAL STORAGE
+// ═══════════════════════════════════════════════════════
+function saveToLocalStorage() {
+    localStorage.setItem('lynkr-data', JSON.stringify(appState));
+    localStorage.setItem('lynkr-last-save-time', new Date().toISOString());
+}
+
+function loadFromLocalStorage() {
+    try {
+        const raw = localStorage.getItem('lynkr-data');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.tabs) {
+                appState = parsed;
+                if (!appState.currentTab && appState.tabs.length > 0) {
+                    appState.currentTab = appState.tabs[0];
+                }
+            } else if (parsed.Tabs || parsed.TabContainers) {
+                const p = parseDesktopSaveData(raw);
+                if (p) appState = p;
+            }
+        }
+    } catch (e) { console.error('[Lynkr] loadFromLocalStorage:', e); }
+}
+
+function saveAndSync() {
+    saveToLocalStorage();
+    if (currentUser) pushToCloud();
+}
+
+// ═══════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════
+function createTab(name) {
+    if (!name || appState.tabs.some(t => t.name === name)) return;
+    const tab = { name, tabColor: '#2A4D6A', groups: {} };
+    appState.tabs.push(tab);
+    appState.currentTab = tab;
+    saveAndSync();
+    renderTabs();
+    renderBookmarks();
+}
+
+function switchTab(tabName) {
+    const tab = appState.tabs.find(t => t.name === tabName);
+    if (!tab) return;
+    appState.currentTab = tab;
+    saveToLocalStorage();
+    renderTabs();
+    renderBookmarks();
+    // Close sidebar on mobile after selecting a tab
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('open');
+    }
+}
+
+function renderTabs() {
+    const container = document.getElementById('tabsList');
+    container.innerHTML = '';
+    appState.tabs.forEach(tab => {
+        const isActive = appState.currentTab?.name === tab.name;
+
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:4px;';
+
+        const btn = document.createElement('button');
+        btn.className = 'tab-button' + (isActive ? ' active' : '');
+        btn.style.cssText = `flex:1;margin-bottom:0;${isActive ? `background-color:${tab.tabColor};color:white;` : ''}`;
+        btn.textContent = tab.name;
+        btn.onclick = () => switchTab(tab.name);
+
+        const optBtn = document.createElement('button');
+        optBtn.className = 'more-btn';
+        optBtn.textContent = '⋮';
+        optBtn.style.cssText = 'flex-shrink:0;padding:6px 8px;';
+        optBtn.onclick = (e) => {
+            e.stopPropagation();
+            showTabCtxMenu(e, tab.name);
+        };
+
+        row.appendChild(btn);
+        row.appendChild(optBtn);
+        container.appendChild(row);
+    });
+}
+
+function showAddTabDialog() {
+    const name = prompt('Tab name:');
+    if (name?.trim()) createTab(name.trim());
+}
+
+function showTabCtxMenu(event, tabName) {
+    event.preventDefault();
+    event.stopPropagation();
+    showCtxMenu(event.clientX, event.clientY, [
+        { icon: '📤', label: 'Export tab', action: () => exportTabByName(tabName) },
+{ icon: '🔗', label: 'Share tab', action: () => showShareTabDialog(tabName) }, // ADD THIS
+{ icon: '✏️', label: 'Rename tab', action: () => renameTab(tabName) },
+        { sep: true },
+        { icon: '🗑️', label: 'Delete tab', action: () => deleteTab(tabName), danger: true }
+    ]);
+}
+
+function renameTab(tabName) {
+    const tab = appState.tabs.find(t => t.name === tabName);
+    if (!tab) return;
+    const newName = prompt('New tab name:', tabName);
+    if (!newName?.trim() || newName === tabName) return;
+    if (appState.tabs.some(t => t.name === newName)) { alert('A tab with that name already exists.'); return; }
+    const wasActive = appState.currentTab?.name === tabName;
+    tab.name = newName;
+    if (wasActive) appState.currentTab = tab;
+    saveAndSync();
+    renderTabs();
+    renderBookmarks();
+}
+
+function deleteTab(tabName) {
+    if (!confirm(`Delete tab "${tabName}"?`)) return;
+    appState.tabs = appState.tabs.filter(t => t.name !== tabName);
+    if (appState.currentTab?.name === tabName) {
+        appState.currentTab = appState.tabs[0] || null;
+    }
+    saveAndSync();
+    renderTabs();
+    renderBookmarks();
+}
+
+// ═══════════════════════════════════════════════════════
+// GROUPS
+// ═══════════════════════════════════════════════════════
+function createGroup(name) {
+    if (!name || !appState.currentTab) return;
+    if (appState.currentTab.groups[name]) return;
+    appState.currentTab.groups[name] = {
+        bookmarks: [], isCollapsed: false,
+        order: Object.keys(appState.currentTab.groups).length,
+        headerColor: '#2A2A2A', backgroundColor: '#1A1A1A',
+        positionX: 20, positionY: 20, level: 0
+    };
+    saveAndSync();
+    renderBookmarks();
+}
+
+function toggleGroup(name) {
+    const g = appState.currentTab?.groups[name];
+    if (!g) return;
+    g.isCollapsed = !g.isCollapsed;
+    saveToLocalStorage();
+    renderBookmarks();
+}
+
+function deleteGroup(name) {
+    if (!confirm(`Delete group "${name}" and all its bookmarks?`)) return;
+    delete appState.currentTab.groups[name];
+    saveAndSync();
+    renderBookmarks();
+}
+
+function showGroupCtxMenu(event, groupName) {
+    event.preventDefault();
+    event.stopPropagation();
+    showCtxMenu(event.clientX, event.clientY, [
+        { icon: '➕', label: 'Add bookmark', action: () => showAddBmDialog(groupName) },
+        { icon: '✏️', label: 'Rename group', action: () => renameGroup(groupName) },
+        { sep: true },
+        { icon: '🗑️', label: 'Delete group', action: () => deleteGroup(groupName), danger: true }
+    ]);
+}
+
+function renameGroup(oldName) {
+    const newName = prompt('New group name:', oldName);
+    if (!newName?.trim() || newName.trim() === oldName) return;
+    const trimmed = newName.trim();
+    if (appState.currentTab.groups[trimmed]) {
+        alert('A group with that name already exists.');
+        return;
+    }
+    const group = appState.currentTab.groups[oldName];
+    appState.currentTab.groups[trimmed] = group;
+    delete appState.currentTab.groups[oldName];
+    saveAndSync();
+    renderBookmarks();
+}
+
+
+// ═══════════════════════════════════════════════════════
+// BOOKMARKS
+// ═══════════════════════════════════════════════════════
+function getFaviconUrl(url) {
+    try {
+        const domain = new URL(url).hostname;
+        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+    } catch { return ''; }
+}
+
+function getPageTitle(url) {
+    try {
+        return new URL(url).hostname.replace('www.', '').split('.')[0];
+    } catch { return 'Bookmark'; }
+}
+
+function addBookmark() {
+    const input = document.getElementById('urlInput');
+    let url = input.value.trim();
+    if (!url || !appState.currentTab) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
+    showGroupSelectDialog(url, () => { input.value = ''; });
+}
+
+function showGroupSelectDialog(url, onDone) {
+    const groups = Object.keys(appState.currentTab?.groups || {});
+    const hasGroups = groups.length > 0;
+    const overlay = mkOverlay('addBmModal');
+
+    overlay.innerHTML = `
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add Bookmark</h3>
+            <button class="modal-close" id="addBmClose">✕</button>
+        </div>
+        <div class="modal-body">
+            <label class="field-label">Group</label>
+            ${hasGroups ? `
+            <select class="select-input" id="groupSel">
+                ${groups.map(g => `<option value="${g}">${g}</option>`).join('')}
+                <option value="__new__">+ Create new group…</option>
+            </select>` : ''}
+            <input class="field-input${hasGroups ? ' hidden' : ''}" id="newGroupInput" placeholder="New group name…">
+            <div class="modal-btns">
+                <button class="btn btn-secondary" id="addBmCancel">Cancel</button>
+                <button class="btn btn-primary" id="addBmConfirm">Add</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    if (!hasGroups) {
+        setTimeout(() => document.getElementById('newGroupInput')?.focus(), 50);
+    }
+
+    document.getElementById('addBmClose').onclick = () => closeModal('addBmModal');
+    document.getElementById('addBmCancel').onclick = () => closeModal('addBmModal');
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('addBmModal'); });
+
+    if (hasGroups) {
+        document.getElementById('groupSel').onchange = () => {
+            const sel = document.getElementById('groupSel');
+            const inp = document.getElementById('newGroupInput');
+            inp.classList.toggle('hidden', sel.value !== '__new__');
+            if (sel.value === '__new__') inp.focus();
+        };
+    }
+
+    document.getElementById('addBmConfirm').onclick = () => {
+        const sel = document.getElementById('groupSel');
+        const newInp = document.getElementById('newGroupInput');
+        let groupName;
+
+        if (!hasGroups || sel?.value === '__new__') {
+            groupName = newInp?.value.trim();
+            if (!groupName) { alert('Enter a group name.'); return; }
+            if (!appState.currentTab.groups[groupName]) createGroupObj(groupName);
+        } else {
+            groupName = sel?.value;
+        }
+
+        if (!groupName) { alert('Please select or create a group.'); return; }
+
+        appState.currentTab.groups[groupName].bookmarks.push({
+            title: getPageTitle(url),
+            url,
+            thumbnailUrl: getFaviconUrl(url),
+            dateAdded: new Date().toISOString(),
+            backgroundColor: '#252525'
+        });
+
+        if (onDone) onDone();
+        closeModal('addBmModal');
+        saveAndSync();
+        renderBookmarks();
+    };
+}
+
+window.handleGroupSelChange = () => {
+    const sel = document.getElementById('groupSel');
+    const inp = document.getElementById('newGroupInput');
+    if (!sel || !inp) return;
+    inp.classList.toggle('hidden', sel.value !== '__new__');
+    if (sel.value === '__new__') inp.focus();
+};
+
+window.confirmAddBm = (url) => {
+    const sel = document.getElementById('groupSel');
+    const newInp = document.getElementById('newGroupInput');
+    let groupName;
+    if (sel?.value === '__new__') {
+        groupName = newInp?.value.trim();
+        if (!groupName) { alert('Enter a group name.'); return; }
+        if (!appState.currentTab.groups[groupName]) createGroupObj(groupName);
+    } else {
+        groupName = sel?.value;
+    }
+    if (!groupName && Object.keys(appState.currentTab.groups).length === 0) {
+        groupName = 'Bookmarks';
+        createGroupObj(groupName);
+    }
+    appState.currentTab.groups[groupName].bookmarks.push({
+        title: getPageTitle(url),
+        url, thumbnailUrl: getFaviconUrl(url),
+        dateAdded: new Date().toISOString(),
+        backgroundColor: '#252525'
+    });
+    const overlay = document.getElementById('addBmModal');
+    if (overlay?._onDone) overlay._onDone();
+    closeModal('addBmModal');
+    saveAndSync();
+    renderBookmarks();
+};
+
+function createGroupObj(name) {
+    appState.currentTab.groups[name] = {
+        bookmarks: [], isCollapsed: false,
+        order: Object.keys(appState.currentTab.groups).length,
+        headerColor: '#2A2A2A', backgroundColor: '#1A1A1A',
+        positionX: 20, positionY: 20, level: 0
+    };
+}
+
+function showAddBmDialog(groupName) {
+    const url = prompt('Bookmark URL:');
+    if (!url) return;
+    let clean = url.trim();
+    if (!clean.startsWith('http')) clean = 'https://' + clean;
+    appState.currentTab.groups[groupName]?.bookmarks.push({
+        title: getPageTitle(clean), url: clean,
+        thumbnailUrl: getFaviconUrl(clean),
+        dateAdded: new Date().toISOString(),
+        backgroundColor: '#252525'
+    });
+    saveAndSync();
+    renderBookmarks();
+}
+
+function deleteBookmark(groupName, idx) {
+    appState.currentTab.groups[groupName]?.bookmarks.splice(idx, 1);
+    saveAndSync();
+    renderBookmarks();
+}
+
+function showBmCtxMenu(event, groupName, idx) {
+    event.preventDefault();
+    event.stopPropagation();
+    const bm = appState.currentTab?.groups[groupName]?.bookmarks[idx];
+    if (!bm) return;
+    showCtxMenu(event.clientX, event.clientY, [
+        { icon: '🔗', label: 'Open link', action: () => window.open(bm.url, '_blank') },
+        { icon: '📋', label: 'Copy URL', action: () => navigator.clipboard.writeText(bm.url) },
+        { sep: true },
+        { icon: '🗑️', label: 'Delete bookmark', action: () => deleteBookmark(groupName, idx), danger: true }
+    ]);
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════
+function renderBookmarks() {
+    const container = document.getElementById('bookmarksArea');
+    container.style.backgroundColor = appState.backgroundColor;
+    container.innerHTML = '';
+
+    if (!appState.currentTab) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">🔗</div><p>No tab selected.<br>Create a tab to get started.</p></div>';
+        return;
+    }
+
+    const groups = sortedGroups(appState.currentTab.groups);
+
+    if (groups.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>No groups yet.<br>Right-click to add a group, or paste a URL above.</p></div>';
+        return;
+    }
+
+    groups.forEach(group => {
+        const groupCard = document.createElement('div');
+        groupCard.className = 'group-card';
+
+        const header = document.createElement('div');
+        header.className = 'group-header';
+        header.style.backgroundColor = group.headerColor;
+
+        const headerLeft = document.createElement('div');
+        headerLeft.className = 'group-header-left';
+        headerLeft.onclick = () => toggleGroup(group.name);
+        headerLeft.innerHTML = `
+            <span class="chevron${group.isCollapsed ? ' collapsed' : ''}">▼</span>
+            <span class="group-title">${escHtml(group.name)}</span>
+            <span class="group-count">(${(group.bookmarks||[]).length})</span>
+        `;
+
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'more-btn';
+        moreBtn.textContent = '⋮';
+        moreBtn.onclick = (e) => showGroupCtxMenu(e, group.name);
+
+        header.appendChild(headerLeft);
+        header.appendChild(moreBtn);
+
+        const content = document.createElement('div');
+        content.className = 'group-content' + (group.isCollapsed ? ' hidden' : '');
+        content.style.backgroundColor = group.backgroundColor;
+
+        if (!group.bookmarks || group.bookmarks.length === 0) {
+            content.innerHTML = '<p style="color:#555;font-size:13px">No bookmarks yet. Right-click to add one.</p>';
+        } else {
+            group.bookmarks.forEach((bm, idx) => {
+    const card = document.createElement('div');
+    card.className = 'bookmark-card';
+    card.style.backgroundColor = bm.backgroundColor;
+    card.innerHTML = `
+        <img src="${bm.thumbnailUrl || getFaviconUrl(bm.url)}" class="bookmark-icon" onerror="this.style.display='none'">
+        <div class="bookmark-info">
+            <div class="bookmark-title">${escHtml(bm.title)}</div>
+            <div class="bookmark-url">${escHtml(bm.url)}</div>
+        </div>
+        <button class="more-btn" style="flex-shrink:0;padding:8px 10px;font-size:20px;">⋮</button>
+    `;
+
+    card.ondblclick = () => window.open(bm.url, '_blank');
+    card.oncontextmenu = (e) => { e.preventDefault(); showBmCtxMenu(e, group.name, idx); };
+    card.querySelector('.more-btn').onclick = (e) => {
+        e.stopPropagation();
+        showBmCtxMenu(e, group.name, idx);
+    };
+
+    content.appendChild(card);
+});
+
+        }
+
+        groupCard.appendChild(header);
+        groupCard.appendChild(content);
+        container.appendChild(groupCard);
+    });
+}
+
+function showBgContextMenu(event) {
+    event.preventDefault();
+    showCtxMenu(event.clientX, event.clientY, [
+        { icon: '📁', label: 'Add new group', action: () => showAddGroupDialog() }
+    ]);
+}
+window.showBgContextMenu = showBgContextMenu;
+
+function showAddGroupDialog() {
+    const name = prompt('Group name:');
+    if (name?.trim()) createGroup(name.trim());
+}
+
+// ═══════════════════════════════════════════════════════
+// IMPORT / EXPORT
+// ═══════════════════════════════════════════════════════
+function exportCurrentTab() {
+    if (!appState.currentTab) { alert('No tab selected.'); return; }
+    exportTabByName(appState.currentTab.name);
+}
+
+function exportTabByName(name) {
+    const tab = appState.tabs.find(t => t.name === name);
+    if (!tab) return;
+    const data = {
+        Name: tab.name, TabColor: tab.tabColor,
+        Groups: sortedGroups(tab.groups).map(groupToGroupData),
+        name: tab.name, tabColor: tab.tabColor,
+        groups: sortedGroups(tab.groups)
+    };
+    dlJson(data, `${tab.name}.lynk`);
+}
+
+function importTab() { document.getElementById('fileInput').click(); }
+
+function handleFileImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (data.tabs && Array.isArray(data.tabs)) {
+                importBackup(data);
+            } else {
+                const tab = parseTabData(data);
+                ensureUniqueName(tab);
+                appState.tabs.push(tab);
+                appState.currentTab = tab;
+                saveAndSync();
+                renderTabs();
+                renderBookmarks();
+                alert(`Imported "${tab.name}" with ${Object.keys(tab.groups).length} groups.`);
+            }
+        } catch (err) { alert('Error importing: ' + err.message); }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+function showImportDialog() {
+    closeAllOverlays();
+    const overlay = mkOverlay('importModal');
+    overlay.innerHTML = `
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Import Bookmarks</h3>
+            <button class="modal-close" onclick="closeModal('importModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:13px;color:#888;margin-bottom:16px">Choose how to import:</p>
+            <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;text-align:left;padding:14px;"
+                onclick="closeModal('importModal'); document.getElementById('fileInput').click()">
+                📁 &nbsp;<strong>Lynkr File (.lynk)</strong>
+                <div style="font-size:11px;color:#666;margin-top:4px">Import a previously exported tab file</div>
+            </button>
+            <button class="btn btn-secondary" style="width:100%;text-align:left;padding:14px;"
+                onclick="closeModal('importModal'); showShareCodeDialog()">
+                🔗 &nbsp;<strong>Enter Share Code</strong>
+                <div style="font-size:11px;color:#666;margin-top:4px">Import a tab shared by another Lynkr user</div>
+            </button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('importModal'); });
+}
+
+function showShareCodeDialog() {
+    closeAllOverlays();
+    const overlay = mkOverlay('shareCodeModal');
+    overlay.innerHTML = `
+    <div class="modal">
+        <div class="modal-header">
+            <h3>🔗 Import by Share Code</h3>
+            <button class="modal-close" onclick="closeModal('shareCodeModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <label class="field-label">Enter the 6-character share code</label>
+            <input class="field-input" id="shareCodeInput" 
+                placeholder="e.g. AB3X7K"
+                maxlength="6"
+                style="font-size:22px;font-family:monospace;font-weight:700;letter-spacing:6px;text-transform:uppercase;"
+                oninput="this.value=this.value.toUpperCase()"
+                onkeydown="if(event.key==='Enter') confirmShareCode()">
+            <div id="shareCodeAlert" class="alert-banner"></div>
+            <div class="modal-btns">
+                <button class="btn btn-secondary" onclick="closeModal('shareCodeModal')">Cancel</button>
+                <button class="btn btn-primary" id="shareCodeBtn" onclick="confirmShareCode()">Import</button>
+            </div>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('shareCodeModal'); });
+    setTimeout(() => document.getElementById('shareCodeInput')?.focus(), 50);
+}
+
+async function confirmShareCode() {
+    const input = document.getElementById('shareCodeInput');
+    const alertEl = document.getElementById('shareCodeAlert');
+    const btn = document.getElementById('shareCodeBtn');
+    const code = input?.value.trim().toUpperCase();
+
+    if (!code || code.length !== 6) {
+        alertEl.textContent = 'Please enter a 6-character code.';
+        alertEl.className = 'alert-banner alert-error';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Looking up…';
+    alertEl.className = 'alert-banner';
+
+    try {
+        const { data, error } = await sb
+            .from('lynkr_shared_tabs')
+            .select('*')
+            .eq('share_code', code)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+            alertEl.textContent = 'Code not found. Please check and try again.';
+            alertEl.className = 'alert-banner alert-error';
+            btn.disabled = false;
+            btn.textContent = 'Import';
+            return;
+        }
+
+        closeModal('shareCodeModal');
+        await importFromShareRow(data);
+
+    } catch (e) {
+        alertEl.textContent = 'Error: ' + e.message;
+        alertEl.className = 'alert-banner alert-error';
+        btn.disabled = false;
+        btn.textContent = 'Import';
+    }
+}
+
+async function importFromShareRow(row) {
+    try {
+        let tabJson;
+
+        if (row.is_live) {
+            const { data, error } = await sb
+                .from('lynkr_bookmarks')
+                .select('data')
+                .eq('user_id', row.owner_user_id)
+                .maybeSingle();
+
+            if (!error && data?.data) {
+                const saveData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+                let foundTabData = (saveData.Tabs || saveData.tabs || [])
+                    .find(t => (t.Name || t.name) === row.tab_name);
+
+                if (!foundTabData) {
+                    for (const c of (saveData.TabContainers || saveData.tabContainers || [])) {
+                        foundTabData = (c.Tabs || c.tabs || [])
+                            .find(t => (t.Name || t.name) === row.tab_name);
+                        if (foundTabData) break;
+                    }
+                }
+
+                tabJson = foundTabData ? JSON.stringify(foundTabData) : row.tab_data;
+            } else {
+                // RLS blocked or no cloud data — fall back to snapshot
+                tabJson = row.tab_data;
+            }
+        } else {
+            tabJson = row.tab_data;
+        }
+
+        const rawTabData = typeof tabJson === 'string' ? JSON.parse(tabJson) : tabJson;
+        const tab = parseTabData(rawTabData);
+
+        if (row.is_live) tab.name = '🔴 ' + tab.name;
+        ensureUniqueName(tab);
+        if (row.is_live) tab._liveShareCode = row.share_code;
+
+        appState.tabs.push(tab);
+        appState.currentTab = tab;
+        saveAndSync();
+        renderTabs();
+        renderBookmarks();
+
+        const note = row.is_live ? '\n\nThis is a live tab — it will refresh every 5 minutes.' : '';
+        alert(`Successfully imported "${tab.name}"!${note}`);
+
+    } catch (e) {
+        alert('Error importing tab: ' + e.message);
+    }
+}
+
+
+async function refreshLiveTabs() {
+    const liveTabs = appState.tabs.filter(t => t._liveShareCode);
+    if (liveTabs.length === 0) return;
+
+    for (const tab of liveTabs) {
+        try {
+            const { data: row } = await sb
+                .from('lynkr_shared_tabs')
+                .select('*')
+                .eq('share_code', tab._liveShareCode)
+                .maybeSingle();
+
+            if (!row) continue;
+
+            const { data: ownerData } = await sb
+                .from('lynkr_bookmarks')
+                .select('data')
+                .eq('user_id', row.owner_user_id)
+                .maybeSingle();
+
+            if (!ownerData?.data) continue;
+
+            const saveData = typeof ownerData.data === 'string'
+                ? JSON.parse(ownerData.data) : ownerData.data;
+
+            let foundTabData = (saveData.Tabs || saveData.tabs || [])
+                .find(t => (t.Name || t.name) === row.tab_name);
+
+            if (!foundTabData) {
+                for (const c of (saveData.TabContainers || saveData.tabContainers || [])) {
+                    foundTabData = (c.Tabs || c.tabs || [])
+                        .find(t => (t.Name || t.name) === row.tab_name);
+                    if (foundTabData) break;
+                }
+            }
+
+            if (!foundTabData) continue;
+
+            const refreshed = parseTabData(foundTabData);
+            tab.groups = refreshed.groups;
+            tab.tabColor = refreshed.tabColor;
+
+        } catch (e) {
+            console.error('[Lynkr] live tab refresh failed:', e);
+        }
+    }
+
+    saveToLocalStorage();
+    renderBookmarks();
+}
+    
+function importBackup(data) {
+    let count = 0;
+    (data.tabs || []).forEach(td => {
+        const tab = parseTabData(td);
+        ensureUniqueName(tab);
+        appState.tabs.push(tab);
+        count++;
+    });
+    appState.currentTab = appState.tabs[appState.tabs.length - 1];
+    saveAndSync();
+    renderTabs();
+    renderBookmarks();
+    alert(`Imported ${count} tab(s) from backup.`);
+}
+
+function ensureUniqueName(tab) {
+    let name = tab.name;
+    let i = 1;
+    while (appState.tabs.some(t => t.name === name)) name = `${tab.name} (${++i})`;
+    tab.name = name;
+}
+
+// ═══════════════════════════════════════════════════════
+// CONTEXT MENU
+// ═══════════════════════════════════════════════════════
+let _activeCtx = null;
+function showCtxMenu(x, y, items) {
+    closeAllOverlays();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.id = '_ctxMenu';
+    
+    items.forEach(item => {
+        if (item.sep) {
+            const hr = document.createElement('hr');
+            hr.className = 'ctx-sep';
+            menu.appendChild(hr);
+        } else {
+            const btn = document.createElement('button');
+            btn.className = 'ctx-item' + (item.danger ? ' danger' : '');
+            btn.innerHTML = `${item.icon} ${item.label}`;
+            btn.onclick = (e) => {
+    e.stopPropagation();
+    // Remove ONLY the context menu, not all overlays
+    document.getElementById('_ctxMenu')?.remove();
+    document.removeEventListener('click', closeAllOverlays);
+    item.action();
+};
+
+
+            menu.appendChild(btn);
+        }
+    });
+
+    document.body.appendChild(menu);
+
+    const mw = 200, mh = items.length * 36;
+    menu.style.left = Math.min(x, window.innerWidth - mw - 8) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - mh - 8) + 'px';
+
+    setTimeout(() => document.addEventListener('click', closeAllOverlays, { once: true }), 0);
+}
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+function mkOverlay(id) {
+    const el = document.createElement('div');
+    el.className = 'modal-overlay';
+    el.id = id;
+    return el;
+}
+
+function closeModal(id) {
+    document.getElementById(id)?.remove();
+}
+
+function closeAllOverlays() {
+    ['_ctxMenu', 'accountDropdown', 'authModal', 'addBmModal', 
+     'shareTabModal', 'importModal', 'shareCodeModal'].forEach(id => {
+        document.getElementById(id)?.remove();
+    });
+}
+
+
+function setSyncStatus(msg) {
+    document.getElementById('syncStatusText').textContent = msg;
+}
+
+function fmtTime() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function escHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function dlJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { addBookmark(); e.preventDefault(); }
+});
+function showShareTabDialog(tabName) {
+    window._shareTabName = tabName;
+    
+        const overlay = mkOverlay('shareTabModal');
+        overlay.innerHTML = `
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Share "${tabName}"</h3>
+            <button class="modal-close" onclick="closeModal('shareTabModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="shareTabAlert" class="alert-banner"></div>
+            <p style="font-size:13px;color:#888;margin-bottom:16px">Generate a 6-character code others can use to import this tab.</p>
+            <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;text-align:left;padding:14px;" id="snapshotBtn" onclick="generateShareCode(window._shareTabName, false)">
+                📸 &nbsp;<strong>Snapshot</strong>
+                <div style="font-size:11px;color:#666;margin-top:4px">Share a fixed copy of the tab as it is right now</div>
+            </button>
+            <button class="btn btn-secondary" style="width:100%;text-align:left;padding:14px;" id="liveBtn" onclick="generateShareCode(window._shareTabName, true)">
+                🔴 &nbsp;<strong>Live</strong>
+                <div style="font-size:11px;color:#666;margin-top:4px">Recipients always see your latest version (requires cloud account)</div>
+            </button>
+            <div id="shareResult" class="hidden" style="margin-top:18px;text-align:center;">
+    <div style="font-size:12px;color:#888;margin-bottom:8px">Share this code:</div>
+    <div id="shareCodeDisplay" style="font-size:32px;font-family:monospace;font-weight:700;letter-spacing:8px;color:#fff;background:#2a2a2a;padding:16px;border-radius:8px;cursor:pointer;" onclick="copyShareCode()" title="Tap to copy"></div>
+    <button onclick="copyShareCode()" class="btn btn-primary" style="width:100%;margin-top:12px;" id="copyBtn">📋 Copy Code</button>
+    <div id="copiedMsg" style="font-size:11px;color:#4caf50;margin-top:6px;display:none;">✓ Copied!</div>
+</div>
+
+
+          
+        </div>
+    </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('shareTabModal'); });
+        if (!currentUser) {
+            const alertEl = document.getElementById('shareTabAlert');
+            alertEl.textContent = 'Sign in to generate share codes.';
+            alertEl.className = 'alert-banner alert-error';
+            document.getElementById('snapshotBtn').disabled = true;
+            document.getElementById('liveBtn').disabled = true;
+        }
+}
+async function generateShareCode(tabName, isLive) {
+    if (!currentUser) return;
+    const tab = appState.tabs.find(t => t.name === tabName);
+    if (!tab) return;
+
+    // Force push so owner's data exists in the cloud
+    if (isLive) {
+        await pushToCloud();
+    }
+
+    const alertEl = document.getElementById('shareTabAlert');
+    const snapshotBtn = document.getElementById('snapshotBtn');
+    const liveBtn = document.getElementById('liveBtn');
+    const shareResult = document.getElementById('shareResult');
+    const shareCodeDisplay = document.getElementById('shareCodeDisplay');
+
+    snapshotBtn.disabled = true;
+    liveBtn.disabled = true;
+    alertEl.textContent = 'Generating code…';
+    alertEl.className = 'alert-banner alert-success';
+
+    try {
+        const tabDataJson = JSON.stringify(tabToTabData(tab));
+        const code = generateCode();
+        const { error } = await sb
+            .from('lynkr_shared_tabs')
+            .insert({
+                share_code: code,
+                owner_user_id: currentUser.id,
+                tab_name: tabName,
+                tab_data: tabDataJson,
+                is_live: isLive
+            });
+        if (error) throw error;
+        alertEl.className = 'alert-banner';
+        shareCodeDisplay.textContent = code;
+        shareResult.classList.remove('hidden');
+        window._currentShareCode = code;
+
+
+
+    } catch (e) {
+        alertEl.textContent = 'Failed: ' + e.message;
+        alertEl.className = 'alert-banner alert-error';
+        snapshotBtn.disabled = false;
+        liveBtn.disabled = false;
+    }
+}
+
+function generateCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function copyShareCode() {
+    const code = window._currentShareCode;
+    if (!code) return;
+    navigator.clipboard.writeText(code).then(() => {
+        document.getElementById('copiedMsg').style.display = 'block';
+        document.getElementById('copyBtn').textContent = '✓ Copied!';
+        setTimeout(() => {
+            document.getElementById('copiedMsg').style.display = 'none';
+            document.getElementById('copyBtn').textContent = '📋 Copy Code';
+        }, 2000);
+    }).catch(() => {
+        // Fallback for browsers that still block it
+        document.getElementById('shareCodeDisplay').style.userSelect = 'all';
+        alert('Tap and hold the code to copy it manually.');
+    });
+}
+
+init();
+</script>
+</body>
+</html>
