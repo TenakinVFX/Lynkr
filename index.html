@@ -589,6 +589,7 @@ function showAccountDropdown() {
     menu.innerHTML = `
         <div class="dropdown-email">✉ ${currentUser.email}</div>
         <button class="ctx-item" onclick="manualSync(); closeAllOverlays()">⟳ &nbsp;Sync now</button>
+        <button class="ctx-item" onclick="forcePull(); closeAllOverlays()">☁ &nbsp;Force pull from cloud</button>
         <hr class="ctx-sep">
         <button class="ctx-item danger" onclick="signOut()">🚪 &nbsp;Sign out</button>
     `;
@@ -790,9 +791,9 @@ async function pullFromCloud() {
         if (data?.data) {
             const cloudUpdated = new Date(data.updated_at);
             const localSavedStr = localStorage.getItem('lynkr-last-save-time');
-            const localUpdated = localSavedStr ? new Date(localSavedStr) : new Date(0);
+const localUpdated = localSavedStr ? new Date(localSavedStr) : new Date(0);
 
-            if (cloudUpdated > localUpdated) {
+if (!localSavedStr || cloudUpdated > localUpdated) {
                 const parsed = parseDesktopSaveData(
                     typeof data.data === 'string' ? data.data : JSON.stringify(data.data)
                 );
@@ -829,7 +830,47 @@ async function manualSync() {
     if (!currentUser) { showAuthModal(); return; }
     await pullFromCloud();
 }
+async function forcePull() {
+    if (!currentUser) return;
+    isSyncing = true;
+    setSyncStatus('Force pulling from cloud…');
+    const syncBtn = document.getElementById('syncBtn');
+    syncBtn.classList.add('syncing');
 
+    try {
+        const { data, error } = await sb
+            .from('lynkr_bookmarks')
+            .select('data, updated_at')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (data?.data) {
+            const parsed = parseDesktopSaveData(
+                typeof data.data === 'string' ? data.data : JSON.stringify(data.data)
+            );
+            if (parsed) {
+                appState = parsed;
+                if (!appState.currentTab && appState.tabs.length > 0) {
+                    appState.currentTab = appState.tabs[0];
+                }
+                saveToLocalStorage();
+                renderTabs();
+                renderBookmarks();
+                setSyncStatus('Force pulled from cloud ' + fmtTime());
+            }
+        } else {
+            setSyncStatus('No cloud data found');
+        }
+    } catch (e) {
+        setSyncStatus('Force pull failed');
+        console.error('[Lynkr] force pull failed:', e.message);
+    } finally {
+        isSyncing = false;
+        syncBtn.classList.remove('syncing');
+    }
+}
 // ═══════════════════════════════════════════════════════
 // SAVE DATA HELPERS
 // ═══════════════════════════════════════════════════════
