@@ -199,7 +199,20 @@
             font-size: 13px; color: #d0d0d0; white-space: pre-wrap; word-break: break-word;
             display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
         }
+        .note-text-expanded { -webkit-line-clamp: unset; overflow: visible; }
+        .note-toggle {
+            background: transparent; border: none; color: #5a8daa;
+            font-size: 11px; cursor: pointer; padding: 4px 0 0; text-align: left;
+        }
+        .note-toggle:hover { color: #7aadc0; text-decoration: underline; }
         .note-date { font-size: 10px; color: #777; margin-top: 6px; }
+        .color-input {
+            width: 100%; height: 42px; padding: 4px;
+            background: #2a2a2a; border: 1px solid #3a3a3d; border-radius: 5px;
+            cursor: pointer; margin-bottom: 4px;
+        }
+        .color-input::-webkit-color-swatch-wrapper { padding: 4px; }
+        .color-input::-webkit-color-swatch { border: none; border-radius: 3px; }
         .add-inline-note {
             background: transparent; border: 1px dashed #3a3a3d; border-radius: 6px;
             color: #888; font-size: 12px; padding: 10px; width: 100%; cursor: pointer; margin-top: 4px;
@@ -1186,6 +1199,7 @@ function showGroupCtxMenu(event, groupName) {
     showCtxMenu(event.clientX, event.clientY, [
         { icon: '➕', label: 'Add bookmark', action: () => showAddBmDialog(groupName) },
         { icon: '📝', label: 'Add note', action: () => showAddNoteDialog(groupName) },
+        { icon: '🎨', label: 'Set colors', action: () => showGroupColorDialog(groupName) },
         { icon: '✏️', label: 'Rename group', action: () => renameGroup(groupName) },
         { sep: true },
         { icon: '🗑️', label: 'Delete group', action: () => deleteGroup(groupName), danger: true }
@@ -1205,6 +1219,42 @@ function renameGroup(oldName) {
     delete appState.currentTab.groups[oldName];
     saveAndSync();
     renderBookmarks();
+}
+
+function showGroupColorDialog(groupName) {
+    closeAllOverlays();
+    const group = appState.currentTab?.groups[groupName];
+    if (!group) return;
+    const overlay = mkOverlay('groupColorModal');
+
+    overlay.innerHTML = `
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Group Colors</h3>
+            <button class="modal-close" onclick="closeModal('groupColorModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <label class="field-label">Header color</label>
+            <input type="color" class="color-input" id="groupHeaderColor" value="${group.headerColor || '#2A2A2A'}">
+            <label class="field-label" style="margin-top:14px;display:block;">Background color</label>
+            <input type="color" class="color-input" id="groupBgColor" value="${group.backgroundColor || '#1A1A1A'}">
+            <div class="modal-btns" style="margin-top:18px;">
+                <button class="btn btn-secondary" onclick="closeModal('groupColorModal')">Cancel</button>
+                <button class="btn btn-primary" id="groupColorSave">Save</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal('groupColorModal'); });
+
+    document.getElementById('groupColorSave').onclick = () => {
+        group.headerColor = document.getElementById('groupHeaderColor').value;
+        group.backgroundColor = document.getElementById('groupBgColor').value;
+        closeModal('groupColorModal');
+        saveAndSync();
+        renderBookmarks();
+    };
 }
 
 
@@ -1552,6 +1602,14 @@ function fmtDate(iso) {
     } catch { return ''; }
 }
 
+// Tracks which notes are expanded (UI-only, not persisted)
+const expandedNotes = new Set();
+function noteKey(groupName, idx) { return groupName + '::' + idx; }
+function noteNeedsToggle(content) {
+    const c = content || '';
+    return c.length > 220 || (c.match(/\n/g) || []).length >= 4;
+}
+
 // ═══════════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════════
@@ -1634,13 +1692,18 @@ function renderBookmarks() {
             });
 
             (group.notes || []).forEach((note, idx) => {
+                const key = noteKey(group.name, idx);
+                const isExpanded = expandedNotes.has(key);
+                const needsToggle = noteNeedsToggle(note.content);
+
                 const card = document.createElement('div');
                 card.className = 'note-card';
                 card.style.backgroundColor = note.backgroundColor || '#252525';
                 card.innerHTML = `
                     <span class="note-icon">📝</span>
                     <div class="note-body">
-                        <div class="note-text">${escHtml(note.content)}</div>
+                        <div class="note-text${isExpanded ? ' note-text-expanded' : ''}">${escHtml(note.content)}</div>
+                        ${needsToggle ? `<button class="note-toggle">${isExpanded ? 'Show less' : 'Show more'}</button>` : ''}
                         <div class="note-date">${fmtDate(note.dateAdded)}</div>
                     </div>
                     <button class="more-btn" style="flex-shrink:0;padding:8px 10px;font-size:20px;">⋮</button>
@@ -1652,6 +1715,13 @@ function renderBookmarks() {
                     e.stopPropagation();
                     showNoteCtxMenu(e, group.name, idx);
                 };
+                if (needsToggle) {
+                    card.querySelector('.note-toggle').onclick = (e) => {
+                        e.stopPropagation();
+                        if (expandedNotes.has(key)) expandedNotes.delete(key); else expandedNotes.add(key);
+                        renderBookmarks();
+                    };
+                }
 
                 content.appendChild(card);
             });
@@ -2013,7 +2083,7 @@ function closeModal(id) {
 
 function closeAllOverlays() {
     ['_ctxMenu', 'accountDropdown', 'authModal', 'addBmModal', 
-     'shareTabModal', 'importModal', 'shareCodeModal', 'noteModal', 'noteGroupModal'].forEach(id => {
+     'shareTabModal', 'importModal', 'shareCodeModal', 'noteModal', 'noteGroupModal', 'groupColorModal'].forEach(id => {
         document.getElementById(id)?.remove();
     });
 }
